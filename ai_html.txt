@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JumpingSpider AI</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        animation: gradient 10s ease infinite;
+        background: linear-gradient(
+          135deg,
+          red,
+          #764ba2,
+          #667eea,
+          #19c8d1,
+          #11ba57
+        );
+        background-size: 400% 400%;
+        font-family: sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .container {
+        position: relative;
+        max-width: 900px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        padding: 40px;
+      }
+
+      a.tutorial-link {
+        position: absolute;
+        bottom: 50px;
+        right: 50px;
+        color: #667eea;
+        font-weight: 600;
+        text-decoration: none;
+        transition: color 0.2s ease, border-bottom 0.2s ease;
+        border-bottom: 2px solid transparent;
+      }
+
+      a.tutorial-link:hover {
+        color: #5568d3;
+        border-bottom: 2px solid #667eea;
+      }
+
+      h1 {
+        color: #333;
+        margin-bottom: 10px;
+        font-size: 2.5em;
+      }
+
+      .subtitle {
+        color: #666;
+        margin-bottom: 30px;
+      }
+
+      .ai-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-left: 10px;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        color: #333;
+        font-weight: 600;
+      }
+
+      input[type="text"] {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: border 0.3s;
+      }
+
+      input[type="text"]:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .ai-mode-container {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 25px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        border: 2px solid #667eea;
+      }
+
+      .manual-mode-container {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+
+      .mode-toggle {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+
+      .mode-btn {
+        flex: 1;
+        padding: 12px;
+        border: 2px solid #667eea;
+        background: white;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s;
+      }
+
+      .mode-btn.active {
+        background: #667eea;
+        color: white;
+      }
+
+      .field-input-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .selector-row {
+        display: grid;
+        grid-template-columns: 1fr 2fr 1fr auto;
+        gap: 10px;
+        margin-bottom: 10px;
+        align-items: end;
+      }
+
+      .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s;
+      }
+
+      .btn-primary {
+        background: #667eea;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #5568d3;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+      }
+
+      .btn-ai {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+      }
+
+      .btn-ai:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.5);
+      }
+
+      .btn-secondary {
+        background: #6c757d;
+        color: white;
+      }
+
+      .btn-secondary:hover {
+        background: #5a6268;
+      }
+
+      .btn-success {
+        background: #28a745;
+        color: white;
+      }
+
+      .btn-success:hover {
+        background: #218838;
+      }
+
+      .btn-danger {
+        background: #dc3545;
+        color: white;
+        padding: 8px 12px;
+      }
+
+      .btn-danger:hover {
+        background: #c82333;
+      }
+
+      .btn-small {
+        padding: 8px 16px;
+        font-size: 13px;
+      }
+
+      .results {
+        margin-top: 30px;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        display: none;
+      }
+
+      .results.show {
+        display: block;
+      }
+
+      .result-item {
+        background: white;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        border-left: 4px solid #667eea;
+      }
+
+      .loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+      }
+
+      .loading.show {
+        display: block;
+      }
+
+      .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .error {
+        background: #f8d7da;
+        color: #721c24;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 20px;
+        display: none;
+      }
+
+      .error.show {
+        display: block;
+      }
+
+      .success-msg {
+        background: #d4edda;
+        color: #155724;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 20px;
+      }
+
+      .info-msg {
+        background: #d1ecf1;
+        color: #0c5460;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 15px;
+      }
+
+      .button-group {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+      }
+
+      @keyframes gradient {
+        0% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+        100% {
+          background-position: 0% 50%;
+        }
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🕷️ JumpingSpider <span class="ai-badge">AI-POWERED</span></h1>
+      <p class="subtitle">Intelligent Web Scraper with Llama3</p>
+
+      <div class="form-group">
+        <label>Website URL</label>
+        <input type="text" id="url" placeholder="https://example.com" />
+      </div>
+
+      <div class="mode-toggle">
+        <button class="mode-btn active" onclick="switchMode('ai')">
+          🤖 AI Mode (Llama3)
+        </button>
+        <button class="mode-btn" onclick="switchMode('manual')">
+          ⚙️ Manual Mode
+        </button>
+      </div>
+
+      <!-- AI MODE -->
+      <div id="ai-mode" class="ai-mode-container">
+        <label>What fields do you want to scrape? <span class="ai-badge">AI</span></label>
+        <p style="color: #666; font-size: 14px; margin-bottom: 15px">
+          Describe the data you want (e.g., "author", "book title", "price", "rating")
+        </p>
+        
+        <div id="ai-fields">
+          <div class="field-input-row">
+            <input type="text" placeholder="e.g., author" class="ai-field-input" />
+            <button class="btn btn-danger btn-small" onclick="removeAIField(this)">✕</button>
+          </div>
+        </div>
+        
+        <button class="btn btn-secondary btn-small" onclick="addAIField()" style="margin-top: 10px">
+          + Add Field
+        </button>
+
+        <button class="btn btn-ai" onclick="analyzeWithAI()" style="margin-top: 20px; width: 100%">
+          🧠 Let AI Find Selectors
+        </button>
+      </div>
+
+      <!-- MANUAL MODE -->
+      <div id="manual-mode" class="manual-mode-container hidden">
+        <div class="form-group">
+          <label>Container Selector</label>
+          <input type="text" id="container" />
+          <small style="color: #666; display: block; margin-top: 5px">
+            The element that wraps each item (e.g., div.quote, article.product)
+          </small>
+        </div>
+
+        <label>Field Selectors</label>
+        <div id="selectors">
+          <div class="selector-row">
+            <div>
+              <input type="text" placeholder="Field name" class="selector-key" />
+            </div>
+            <div>
+              <input type="text" placeholder="CSS selector" class="selector-value" />
+            </div>
+            <div>
+              <input type="text" placeholder="Attribute (optional)" class="selector-attribute" />
+            </div>
+            <div>
+              <button class="btn btn-danger btn-small" onclick="removeSelector(this)">✕</button>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-small" onclick="addSelector()" style="margin-top: 10px">
+          + Add Field
+        </button>
+      </div>
+
+      <div class="button-group">
+        <button class="btn btn-primary" onclick="scrapeData()">🚀 Scrape Data</button>
+        <a class="tutorial-link" target="_blank" rel="noopener noreferrer" href="https://www.youtube.com/">tutorial</a>
+      </div>
+
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p style="margin-top: 15px; color: #666" id="loading-text">Processing...</p>
+      </div>
+
+      <div class="error" id="error"></div>
+
+      <div class="results" id="results">
+        <h3 style="margin-bottom: 15px">Results</h3>
+        <div id="resultsContent"></div>
+        <button class="btn btn-success" onclick="downloadData()" style="margin-top: 20px">
+          💾 Download JSON
+        </button>
+      </div>
+    </div>
+
+    <script>
+      let scrapedData = null;
+      let currentMode = 'ai';
+      let aiSuggestedSelectors = null;
+
+      function switchMode(mode) {
+        currentMode = mode;
+        const aiMode = document.getElementById('ai-mode');
+        const manualMode = document.getElementById('manual-mode');
+        const modeBtns = document.querySelectorAll('.mode-btn');
+
+        modeBtns.forEach(btn => btn.classList.remove('active'));
+        
+        if (mode === 'ai') {
+          aiMode.classList.remove('hidden');
+          manualMode.classList.add('hidden');
+          modeBtns[0].classList.add('active');
+        } else {
+          aiMode.classList.add('hidden');
+          manualMode.classList.remove('hidden');
+          modeBtns[1].classList.add('active');
+        }
+      }
+
+      function addAIField() {
+        const container = document.getElementById('ai-fields');
+        const row = document.createElement('div');
+        row.className = 'field-input-row';
+        row.innerHTML = `
+          <input type="text" placeholder="e.g., price" class="ai-field-input" />
+          <button class="btn btn-danger btn-small" onclick="removeAIField(this)">✕</button>
+        `;
+        container.appendChild(row);
+      }
+
+      function removeAIField(btn) {
+        btn.closest('.field-input-row').remove();
+      }
+
+      function addSelector() {
+        const container = document.getElementById('selectors');
+        const row = document.createElement('div');
+        row.className = 'selector-row';
+        row.innerHTML = `
+          <div><input type="text" placeholder="Field name" class="selector-key"></div>
+          <div><input type="text" placeholder="CSS selector" class="selector-value"></div>
+          <div><input type="text" placeholder="Attribute (optional)" class="selector-attribute"></div>
+          <div><button class="btn btn-danger btn-small" onclick="removeSelector(this)">✕</button></div>
+        `;
+        container.appendChild(row);
+      }
+
+      function removeSelector(btn) {
+        btn.closest('.selector-row').remove();
+      }
+
+      async function analyzeWithAI() {
+        const url = document.getElementById('url').value;
+        const fieldInputs = document.querySelectorAll('.ai-field-input');
+        const fields = [];
+
+        fieldInputs.forEach(input => {
+          if (input.value.trim()) {
+            fields.push(input.value.trim());
+          }
+        });
+
+        if (!url) {
+          showError('Please enter a URL');
+          return;
+        }
+
+        if (fields.length === 0) {
+          showError('Please add at least one field to scrape');
+          return;
+        }
+
+        document.getElementById('loading').classList.add('show');
+        document.getElementById('loading-text').textContent = 'AI is analyzing the page...';
+        document.getElementById('error').classList.remove('show');
+
+        try {
+          const response = await fetch('/analyze-page', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, fields })
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            aiSuggestedSelectors = data.suggestions;
+            showAISuggestions(data.suggestions);
+          } else {
+            showError(data.error);
+          }
+        } catch (error) {
+          showError('AI analysis failed: ' + error.message);
+        } finally {
+          document.getElementById('loading').classList.remove('show');
+        }
+      }
+
+      function showAISuggestions(suggestions) {
+        const resultsContent = document.getElementById('resultsContent');
+        resultsContent.innerHTML = `
+          <div class="info-msg">
+            <strong>🧠 AI Found These Selectors:</strong><br><br>
+            <strong>Container:</strong> <code>${suggestions.container}</code><br><br>
+            <strong>Fields:</strong>
+            <pre style="margin-top: 10px; background: white; padding: 10px; border-radius: 5px;">${JSON.stringify(suggestions.selectors, null, 2)}</pre>
+            <button class="btn btn-success" onclick="useSuggestedSelectors()" style="margin-top: 15px">
+              ✓ Use These Selectors
+            </button>
+          </div>
+        `;
+        document.getElementById('results').classList.add('show');
+      }
+
+      function useSuggestedSelectors() {
+        if (!aiSuggestedSelectors) return;
+
+        // Fill in the manual mode with AI suggestions
+        document.getElementById('container').value = aiSuggestedSelectors.container;
+        
+        const selectorsContainer = document.getElementById('selectors');
+        selectorsContainer.innerHTML = '';
+
+        for (const [key, value] of Object.entries(aiSuggestedSelectors.selectors)) {
+          const row = document.createElement('div');
+          row.className = 'selector-row';
+          row.innerHTML = `
+            <div><input type="text" value="${key}" class="selector-key"></div>
+            <div><input type="text" value="${value}" class="selector-value"></div>
+            <div><input type="text" placeholder="Attribute (optional)" class="selector-attribute"></div>
+            <div><button class="btn btn-danger btn-small" onclick="removeSelector(this)">✕</button></div>
+          `;
+          selectorsContainer.appendChild(row);
+        }
+
+        // Auto-trigger scrape
+        scrapeData();
+      }
+
+      async function scrapeData() {
+        const url = document.getElementById('url').value;
+        let container, selectors;
+
+        if (currentMode === 'ai' && aiSuggestedSelectors) {
+          container = aiSuggestedSelectors.container;
+          selectors = Object.entries(aiSuggestedSelectors.selectors).map(([key, value]) => ({
+            key,
+            value,
+            attribute: null
+          }));
+        } else {
+          container = document.getElementById('container').value;
+          const selectorRows = document.querySelectorAll('.selector-row');
+          selectors = [];
+
+          selectorRows.forEach(row => {
+            const key = row.querySelector('.selector-key').value;
+            const value = row.querySelector('.selector-value').value;
+            const attribute = row.querySelector('.selector-attribute').value;
+
+            if (key && value) {
+              selectors.push({ key, value, attribute: attribute || null });
+            }
+          });
+        }
+
+        if (!url || !container || selectors.length === 0) {
+          showError('Please fill in all required fields');
+          return;
+        }
+
+        document.getElementById('loading').classList.add('show');
+        document.getElementById('loading-text').textContent = 'Scraping data...';
+        document.getElementById('error').classList.remove('show');
+        document.getElementById('results').classList.remove('show');
+
+        try {
+          const response = await fetch('/scrape', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, container, selectors })
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            scrapedData = data;
+            displayResults(data);
+          } else {
+            showError(data.error);
+          }
+        } catch (error) {
+          showError('Failed to scrape: ' + error.message);
+        } finally {
+          document.getElementById('loading').classList.remove('show');
+        }
+      }
+
+      function displayResults(data) {
+        const resultsContent = document.getElementById('resultsContent');
+        resultsContent.innerHTML = `
+          <div class="success-msg">
+            ✅ Successfully scraped ${data.count} items from ${data.url}
+          </div>
+        `;
+
+        data.data.forEach((item, index) => {
+          const itemDiv = document.createElement('div');
+          itemDiv.className = 'result-item';
+          itemDiv.innerHTML = `
+            <strong>Item ${index + 1}</strong>
+            <pre style="margin-top: 10px; background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto;">${JSON.stringify(item, null, 2)}</pre>
+          `;
+          resultsContent.appendChild(itemDiv);
+        });
+
+        document.getElementById('results').classList.add('show');
+      }
+
+      function showError(message) {
+        const errorDiv = document.getElementById('error');
+        errorDiv.textContent = '❌ ' + message;
+        errorDiv.classList.add('show');
+      }
+
+      function downloadData() {
+        if (!scrapedData) return;
+
+        const dataStr = JSON.stringify(scrapedData, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `scraped_data_${new Date().getTime()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    </script>
+  </body>
+</html>

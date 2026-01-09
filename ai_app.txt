@@ -1,0 +1,208 @@
+from flask import Flask, render_template, request, jsonify
+from my_scraper import scrape_all_items
+import requests
+from bs4 import BeautifulSoup
+
+app = Flask(__name__)
+
+OLLAMA_API_URL = "http://localhost:11434/api/generate"
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+def get_page_structure(url):
+    """Fetch webpage and extract structure for LLM analysis"""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Get a simplified HTML structure (first 50 elements with classes/ids)
+        elements = []
+        for tag in soup.find_all(True, limit=100):
+            if tag.get('class') or tag.get('id'):
+                elem_info = {
+                    'tag': tag.name,
+                    'class': ' '.join(tag.get('class', [])),
+                    'id': tag.get('id', ''),
+                    'text': tag.get_text(strip=True)[:100]
+                }
+                elements.append(elem_info)
+        
+        return elements[:50]  # Limit to avoid token overflow
+    except Exception as e:
+        print(f"Error fetching page structure: {e}")
+        return []
+
+def ask_llama3(prompt):
+    """Send prompt to Ollama Llama3 and get response"""
+    try:
+        payload = {
+            "model": "llama3",
+            "prompt": prompt,
+            "stream": False,
+            "temperature": 0.1
+        }
+        
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+        return result.get('response', '')
+    except Exception as e:
+        print(f"Error calling Ollama: {e}")
+        return None
+
+@app.route('/analyze-page', methods=['POST'])
+def analyze_page():
+    """Use Llama3 to analyze page and suggest selectors"""
+    try:
+        data = request.json
+        url = data.get('url')
+        fields = data.get('fields', [])  # List of field descriptions like ["author", "title", "price"]
+        
+        if not url or not fields:
+            return jsonify({
+                'success': False,
+                'error': 'URL and fields are required'
+            }), 400
+        
+        # Get page structure
+        page_elements = get_page_structure(url)
+        
+        if not page_elements:
+            return jsonify({
+                'success': False,
+                'error': 'Could not fetch page structure'
+            }), 400
+        
+        # Build prompt for Llama3
+        elements_str = "\n".join([
+            f"- {e['tag']} (class: '{e['class']}', id: '{e['id']}'): {e['text'][:50]}"
+            for e in page_elements[:30]
+        ])
+        
+        fields_str = ", ".join(fields)
+        
+        prompt = f"""You are a web scraping expert. Analyze this HTML structure and suggest CSS selectors.
+
+URL: {url}
+
+HTML Elements Found:
+{elements_str}
+
+Task: Find CSS selectors for these fields: {fields_str}
+
+Also identify the CONTAINER selector that wraps each repeating item (like each product, quote, or article).
+
+Respond ONLY in this exact JSON format (no additional text):
+{{
+  "container": "div.item",
+  "selectors": {{
+    "field_name": "css.selector"
+  }}
+}}
+
+Example response:
+{{
+  "container": "div.quote",
+  "selectors": {{
+    "author": "span.author",
+    "text": "span.text",
+    "tags": "div.tags"
+  }}
+}}
+
+Your response:"""
+
+        # Get Llama3 response
+        llm_response = ask_llama3(prompt)
+        
+        if not llm_response:
+            return jsonify({
+                'success': False,
+                'error': 'Ollama/Llama3 did not respond. Make sure Ollama is running.'
+            }), 500
+        
+        # Parse JSON from response
+        import json
+        import re
+        
+        # Try to extract JSON from response
+        json_match = re.search(r'\{[\s\S]*\}', llm_response)
+        if json_match:
+            suggestions = json.loads(json_match.group())
+        else:
+            # Fallback parsing
+            suggestions = json.loads(llm_response)
+        
+        return jsonify({
+            'success': True,
+            'suggestions': suggestions
+        })
+        
+    except json.JSONDecodeError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Could not parse LLM response as JSON: {str(e)}',
+            'raw_response': llm_response
+        }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/scrape', methods=['POST'])
+def scrape():
+    """Handle scraping requests"""
+    try:
+        data = request.json
+        url = data.get('url')
+        container = data.get('container')
+        selectors_list = data.get('selectors', [])
+        
+        if not url or not container:
+            return jsonify({
+                'success': False,
+                'error': 'URL and container are required'
+            }), 400
+        
+        # Convert selectors list to dict
+        selectors = {}
+        for sel in selectors_list:
+            key = sel.get('key')
+            value = sel.get('value')
+            attribute = sel.get('attribute')
+            
+            if key and value:
+                if attribute:
+                    selectors[key] = (value, attribute)
+                else:
+                    selectors[key] = value
+        
+        if not selectors:
+            return jsonify({
+                'success': False,
+                'error': 'At least one selector is required'
+            }), 400
+        
+        # Scrape the data
+        items = scrape_all_items(url, selectors, container)
+        
+        return jsonify({
+            'success': True,
+            'count': len(items),
+            'data': items,
+            'url': url
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
