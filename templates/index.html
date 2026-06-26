@@ -170,6 +170,27 @@
         min-height: 16px;
       }
 
+      .method-badge {
+        font-family: var(--mono);
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 3px;
+        margin-left: 8px;
+        display: none;
+      }
+
+      .method-badge.ai {
+        background: #00ff8822;
+        color: var(--accent);
+        border: 1px solid #00ff8844;
+      }
+
+      .method-badge.selectors {
+        background: #a78bfa22;
+        color: #a78bfa;
+        border: 1px solid #a78bfa44;
+      }
+
       .advanced-toggle {
         width: 100%;
         background: none;
@@ -209,6 +230,14 @@
       }
       .advanced-inner {
         padding: 20px 24px;
+      }
+
+      .advanced-note {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 16px;
+        line-height: 1.5;
       }
 
       .selectors-header {
@@ -310,6 +339,10 @@
         justify-content: space-between;
       }
 
+      .results-meta-wrap {
+        display: flex;
+        align-items: center;
+      }
       .results-meta {
         font-family: var(--mono);
         font-size: 11px;
@@ -319,12 +352,10 @@
         color: var(--accent);
       }
 
-      /* ── Save buttons ── */
       .save-buttons {
         display: none;
         gap: 8px;
       }
-
       .save-buttons.show {
         display: flex;
       }
@@ -346,7 +377,6 @@
         border-color: var(--accent);
         color: var(--accent);
       }
-
       .btn-save.ml {
         border-color: #444;
       }
@@ -504,7 +534,8 @@
         <div class="ai-main">
           <div class="section-label">What do you want to scrape?</div>
           <p class="ai-hint">
-            Describe the fields in plain English — AI handles the rest.
+            Describe the fields in plain English — AI reads the whole page and
+            extracts them.
           </p>
           <div class="ai-input-row">
             <input
@@ -512,7 +543,7 @@
               id="ai-fields"
               placeholder="e.g. title, price, author"
             />
-            <button class="btn-accent" id="ai-btn" onclick="suggestSelectors()">
+            <button class="btn-accent" id="scrape-btn" onclick="scrapeData()">
               → go
             </button>
           </div>
@@ -559,18 +590,14 @@
             </div>
           </div>
         </div>
-
-        <div class="actions">
-          <button class="btn-primary" id="scrape-btn" onclick="scrapeData()">
-            run scraper
-          </button>
-        </div>
       </div>
 
       <div class="panel-right">
         <div class="results-header">
-          <div class="results-meta" id="results-meta">waiting for input</div>
-
+          <div class="results-meta-wrap">
+            <div class="results-meta" id="results-meta">waiting for input</div>
+            <span class="method-badge" id="method-badge"></span>
+          </div>
           <div class="save-buttons" id="save-buttons">
             <button
               class="btn-save"
@@ -610,6 +637,17 @@
     <script>
       let scrapedData = null;
 
+      // ── XSS protection ──
+      function escapeHTML(str) {
+        if (str === null || str === undefined) return null;
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
       function toggleAdvanced() {
         const content = document.getElementById("advanced-content");
         const arrow = document.getElementById("toggle-arrow");
@@ -622,10 +660,10 @@
         const row = document.createElement("div");
         row.className = "selector-row";
         row.innerHTML = `
-        <input type="text" placeholder="name" class="selector-key">
-        <input type="text" placeholder="selector" class="selector-value">
-        <button class="remove-btn" onclick="removeSelector(this)">✕</button>
-      `;
+          <input type="text" placeholder="name" class="selector-key">
+          <input type="text" placeholder="selector" class="selector-value">
+          <button class="remove-btn" onclick="removeSelector(this)">✕</button>
+        `;
         container.appendChild(row);
       }
 
@@ -667,15 +705,15 @@
               const val =
                 v === null
                   ? `<span class="null-color">null</span>`
-                  : `<span class="val-color">"${v}"</span>`;
-              return `  <span class="key-color">"${k}"</span>: ${val}`;
+                  : `<span class="val-color">"${escapeHTML(v)}"</span>`;
+              return `  <span class="key-color">"${escapeHTML(k)}"</span>: ${val}`;
             })
             .join("\n");
 
           div.innerHTML = `
-          <div class="result-item-header">ITEM ${String(i + 1).padStart(2, "0")}</div>
-          <pre>${lines}</pre>
-        `;
+            <div class="result-item-header">ITEM ${String(i + 1).padStart(2, "0")}</div>
+            <pre>${lines}</pre>
+          `;
           grid.appendChild(div);
         });
 
@@ -683,78 +721,22 @@
         document.getElementById("loading-state").style.display = "none";
         grid.style.display = "flex";
         document.getElementById("results-meta").innerHTML =
-          `<span>${data.count}</span> items scraped from ${data.url}`;
+          `<span>${data.count}</span> items scraped from ${escapeHTML(data.url)}`;
         document.getElementById("save-buttons").classList.add("show");
-      }
 
-      async function suggestSelectors() {
-        const url = document.getElementById("url").value.trim();
-        const fieldsInput = document.getElementById("ai-fields").value.trim();
-        const status = document.getElementById("ai-status");
-        const btn = document.getElementById("ai-btn");
-
-        if (!url || !fieldsInput) {
-          showError("Enter a URL and describe what you want first");
-          return;
-        }
-
-        const fields = fieldsInput
-          .split(",")
-          .map((f) => f.trim())
-          .filter(Boolean);
-        btn.disabled = true;
-        status.textContent = "⏳ thinking...";
-        clearError();
-
-        try {
-          const res = await fetch("/analyze-page", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url, fields }),
-          });
-
-          const data = await res.json();
-
-          if (data.success) {
-            document.getElementById("container").value =
-              data.suggestions.container || "";
-
-            const selectorsDiv = document.getElementById("selectors");
-            selectorsDiv.innerHTML = "";
-
-            for (const [field, selector] of Object.entries(
-              data.suggestions.selectors,
-            )) {
-              const row = document.createElement("div");
-              row.className = "selector-row";
-              row.innerHTML = `
-              <input type="text" class="selector-key" value="${field}">
-              <input type="text" class="selector-value" value="${selector}">
-              <button class="remove-btn" onclick="removeSelector(this)">✕</button>
-            `;
-              selectorsDiv.appendChild(row);
-            }
-
-            const content = document.getElementById("advanced-content");
-            const arrow = document.getElementById("toggle-arrow");
-            content.classList.add("open");
-            arrow.classList.add("open");
-
-            status.textContent = "✓ selectors ready — hit run scraper";
-          } else {
-            showError("AI: " + data.error);
-            status.textContent = "";
-          }
-        } catch (err) {
-          showError("Could not reach AI: " + err.message);
-          status.textContent = "";
-        } finally {
-          btn.disabled = false;
+        // Show which method was used
+        const badge = document.getElementById("method-badge");
+        if (data.method) {
+          badge.textContent =
+            data.method === "ai" ? "ai extraction" : "css selectors";
+          badge.className = `method-badge ${data.method}`;
+          badge.style.display = "inline";
         }
       }
 
       async function scrapeData() {
         const url = document.getElementById("url").value.trim();
+        const fieldsInput = document.getElementById("ai-fields").value.trim();
         const container = document.getElementById("container").value.trim();
 
         const rows = document.querySelectorAll(".selector-row");
@@ -765,25 +747,39 @@
           if (k && v) selectors[k] = v;
         });
 
+        // Parse fields from AI input
+        const fields = fieldsInput
+          ? fieldsInput
+              .split(",")
+              .map((f) => f.trim())
+              .filter(Boolean)
+          : [];
+
         clearError();
 
-        if (!url || !container || Object.keys(selectors).length === 0) {
+        if (!url) {
+          showError("Enter a URL");
+          return;
+        }
+
+        if (!fields.length && (!container || !Object.keys(selectors).length)) {
           showError(
-            "URL, container, and at least one field are required — use AI suggest or open Advanced",
+            "Describe what you want to scrape, or open Advanced and add manual selectors",
           );
           return;
         }
 
         document.getElementById("scrape-btn").disabled = true;
         document.getElementById("save-buttons").classList.remove("show");
-        setLoading(true, "fetching page...");
+        document.getElementById("method-badge").style.display = "none";
+        setLoading(true, "reading page...");
         document.getElementById("results-meta").textContent = "scraping...";
 
         try {
           const res = await fetch("/scrape", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url, container, selectors }),
+            body: JSON.stringify({ url, fields, container, selectors }),
           });
 
           const data = await res.json();
@@ -813,14 +809,16 @@
         const fields = Object.keys(scrapedData.data[0] || {});
         const timestamp = new Date().toLocaleString();
 
-        const tableHeaders = fields.map((f) => `<th>${f}</th>`).join("");
+        const tableHeaders = fields
+          .map((f) => `<th>${escapeHTML(f)}</th>`)
+          .join("");
 
         const tableRows = scrapedData.data
           .map((item, i) => {
             const cells = fields
               .map(
                 (f) =>
-                  `<td>${item[f] !== null ? item[f] : '<span class="null">—</span>'}</td>`,
+                  `<td>${item[f] !== null ? escapeHTML(String(item[f])) : '<span class="null">—</span>'}</td>`,
               )
               .join("");
             return `<tr><td class="num">${i + 1}</td>${cells}</tr>`;
@@ -831,7 +829,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Scrape Report — ${scrapedData.url}</title>
+  <title>Scrape Report</title>
   <style>
     body { font-family: -apple-system, sans-serif; background: #f9f9f9; color: #111; padding: 40px; }
     h1 { font-size: 22px; margin-bottom: 6px; }
@@ -848,7 +846,7 @@
 </head>
 <body>
   <h1>Scrape Report</h1>
-  <div class="meta">Source: <a href="${scrapedData.url}">${scrapedData.url}</a> &nbsp;·&nbsp; ${scrapedData.count} items &nbsp;·&nbsp; ${timestamp}</div>
+  <div class="meta">Source: <a href="${escapeHTML(scrapedData.url)}">${escapeHTML(scrapedData.url)}</a> &nbsp;·&nbsp; ${scrapedData.count} items &nbsp;·&nbsp; ${timestamp}</div>
   <table>
     <thead><tr><th>#</th>${tableHeaders}</tr></thead>
     <tbody>${tableRows}</tbody>
@@ -866,7 +864,6 @@
 
         const lines = scrapedData.data
           .map((item) => {
-            // Add metadata fields useful for ML pipelines
             const record = {
               ...item,
               _source: scrapedData.url,
@@ -879,7 +876,6 @@
         download(lines, `dataset_${Date.now()}.jsonl`, "application/jsonl");
       }
 
-      // ── Shared download helper ──
       function download(content, filename, type) {
         const blob = new Blob([content], { type });
         const a = document.createElement("a");
