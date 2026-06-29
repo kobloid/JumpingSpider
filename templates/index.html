@@ -16,6 +16,7 @@
       :root {
         --bg: #0a0a0a;
         --surface: #111111;
+        --surface2: #161616;
         --border: #222222;
         --muted: #444444;
         --subtle: #888888;
@@ -135,7 +136,6 @@
         display: flex;
         gap: 8px;
       }
-
       .ai-input-row input {
         flex: 1;
       }
@@ -170,27 +170,6 @@
         min-height: 16px;
       }
 
-      .method-badge {
-        font-family: var(--mono);
-        font-size: 10px;
-        padding: 2px 8px;
-        border-radius: 3px;
-        margin-left: 8px;
-        display: none;
-      }
-
-      .method-badge.ai {
-        background: #00ff8822;
-        color: var(--accent);
-        border: 1px solid #00ff8844;
-      }
-
-      .method-badge.selectors {
-        background: #a78bfa22;
-        color: #a78bfa;
-        border: 1px solid #a78bfa44;
-      }
-
       .advanced-toggle {
         width: 100%;
         background: none;
@@ -212,7 +191,6 @@
       .advanced-toggle:hover {
         color: var(--text);
       }
-
       .toggle-arrow {
         transition: transform 0.2s;
         font-size: 10px;
@@ -325,6 +303,7 @@
         cursor: not-allowed;
       }
 
+      /* ── Right panel ── */
       .panel-right {
         display: flex;
         flex-direction: column;
@@ -332,35 +311,65 @@
       }
 
       .results-header {
-        padding: 16px 24px;
+        padding: 14px 24px;
         border-bottom: 1px solid var(--border);
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 16px;
+        flex-shrink: 0;
       }
 
       .results-meta-wrap {
         display: flex;
         align-items: center;
+        gap: 10px;
       }
-      .results-meta {
+
+      .results-title {
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .results-count {
         font-family: var(--mono);
         font-size: 11px;
         color: var(--subtle);
       }
-      .results-meta span {
+
+      .results-count span {
         color: var(--accent);
       }
 
-      .save-buttons {
+      .method-badge {
+        font-family: var(--mono);
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 3px;
         display: none;
-        gap: 8px;
-      }
-      .save-buttons.show {
-        display: flex;
       }
 
-      .btn-save {
+      .method-badge.ai {
+        background: #00ff8818;
+        color: var(--accent);
+        border: 1px solid #00ff8833;
+      }
+
+      .method-badge.selectors {
+        background: #a78bfa18;
+        color: #a78bfa;
+        border: 1px solid #a78bfa33;
+      }
+
+      .header-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .btn-icon {
         background: none;
         border: 1px solid var(--border);
         border-radius: 4px;
@@ -371,28 +380,94 @@
         font-size: 11px;
         transition: all 0.15s;
         white-space: nowrap;
+        display: none;
+        align-items: center;
+        gap: 6px;
       }
 
-      .btn-save:hover {
+      .btn-icon:hover {
         border-color: var(--accent);
         color: var(--accent);
       }
-      .btn-save.ml {
-        border-color: #444;
-      }
-      .btn-save.ml:hover {
+      .btn-icon.ml:hover {
         border-color: #a78bfa;
         color: #a78bfa;
       }
+      .btn-icon.show {
+        display: inline-flex;
+      }
 
+      /* ── Search bar ── */
+      .search-bar {
+        padding: 10px 24px;
+        border-bottom: 1px solid var(--border);
+        display: none;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+
+      .search-bar.show {
+        display: flex;
+      }
+
+      .search-wrap {
+        position: relative;
+        flex: 1;
+        max-width: 320px;
+      }
+
+      .search-wrap input {
+        width: 100%;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 7px 12px 7px 30px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text);
+        outline: none;
+        transition: border-color 0.15s;
+      }
+
+      .search-wrap input:focus {
+        border-color: var(--accent);
+      }
+      .search-wrap input::placeholder {
+        color: var(--muted);
+      }
+
+      .search-icon {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted);
+        font-size: 12px;
+        pointer-events: none;
+      }
+
+      .search-count {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--subtle);
+        white-space: nowrap;
+      }
+
+      .search-count span {
+        color: var(--accent);
+      }
+
+      /* ── Table ── */
       .results-body {
         flex: 1;
-        overflow-y: auto;
-        padding: 24px;
+        overflow: auto;
+        position: relative;
       }
 
       .empty-state {
-        height: 100%;
+        position: absolute;
+        inset: 0;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -411,7 +486,8 @@
       }
 
       .loading-state {
-        height: 100%;
+        position: absolute;
+        inset: 0;
         display: none;
         flex-direction: column;
         align-items: center;
@@ -439,6 +515,10 @@
       }
 
       .error-bar {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        right: 16px;
         background: var(--error-dim);
         border: 1px solid var(--error);
         border-radius: 4px;
@@ -446,55 +526,141 @@
         font-family: var(--mono);
         font-size: 12px;
         color: var(--error);
-        margin-bottom: 16px;
         display: none;
+        z-index: 10;
       }
 
       .error-bar.show {
         display: block;
       }
 
-      .result-grid {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
+      .data-table-wrap {
+        display: none;
+        height: 100%;
+        overflow: auto;
       }
 
-      .result-item {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        overflow: hidden;
+      .data-table-wrap.show {
+        display: block;
       }
 
-      .result-item-header {
-        padding: 8px 14px;
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      thead {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: var(--surface2);
+      }
+
+      thead tr {
         border-bottom: 1px solid var(--border);
+      }
+
+      th {
+        padding: 11px 16px;
+        text-align: left;
         font-family: var(--mono);
         font-size: 10px;
+        font-weight: 600;
         color: var(--subtle);
-        letter-spacing: 0.08em;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        border-right: 1px solid var(--border);
+        user-select: none;
       }
 
-      .result-item pre {
-        padding: 12px 14px;
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--text);
-        overflow-x: auto;
-        line-height: 1.7;
-        white-space: pre-wrap;
-        word-break: break-all;
+      th:last-child {
+        border-right: none;
       }
-
-      .key-color {
-        color: var(--subtle);
-      }
-      .val-color {
-        color: var(--accent);
-      }
-      .null-color {
+      th.row-num {
         color: var(--muted);
+        width: 48px;
+        text-align: center;
+      }
+
+      tbody tr {
+        border-bottom: 1px solid var(--border);
+        transition: background 0.1s;
+      }
+
+      tbody tr:hover {
+        background: var(--surface2);
+      }
+      tbody tr:last-child {
+        border-bottom: none;
+      }
+      tbody tr.hidden {
+        display: none;
+      }
+
+      /* highlight matched search text */
+      tbody tr.match mark {
+        background: #00ff8830;
+        color: var(--accent);
+        border-radius: 2px;
+        padding: 0 1px;
+      }
+
+      td {
+        padding: 10px 16px;
+        color: var(--text);
+        font-size: 12px;
+        border-right: 1px solid var(--border);
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: middle;
+      }
+
+      td:last-child {
+        border-right: none;
+      }
+
+      td.row-num {
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 11px;
+        text-align: center;
+        width: 48px;
+      }
+
+      td.null-cell {
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      td.url-cell a {
+        color: #60a5fa;
+        text-decoration: none;
+      }
+      td.url-cell a:hover {
+        text-decoration: underline;
+      }
+
+      td.img-cell {
+        padding: 6px 16px;
+        width: 60px;
+      }
+      td.img-cell img {
+        width: 40px;
+        height: 40px;
+        object-fit: cover;
+        border-radius: 4px;
+        display: block;
+      }
+
+      td.expanded {
+        white-space: normal;
+        word-break: break-word;
+        max-width: 400px;
       }
 
       @keyframes spin {
@@ -505,6 +671,7 @@
 
       ::-webkit-scrollbar {
         width: 4px;
+        height: 4px;
       }
       ::-webkit-scrollbar-track {
         background: transparent;
@@ -557,6 +724,10 @@
 
         <div class="advanced-content" id="advanced-content">
           <div class="advanced-inner">
+            <p class="advanced-note">
+              Only needed if AI extraction fails. Container is the element that
+              wraps each repeated item.
+            </p>
             <div class="field">
               <label>Container selector</label>
               <input
@@ -590,33 +761,49 @@
             </div>
           </div>
         </div>
+
+        <div class="actions">
+          <button class="btn-primary" id="run-btn" onclick="scrapeData()">
+            run scraper
+          </button>
+        </div>
       </div>
 
       <div class="panel-right">
         <div class="results-header">
           <div class="results-meta-wrap">
-            <div class="results-meta" id="results-meta">waiting for input</div>
+            <div class="results-title">Result Table</div>
+            <div class="results-count" id="results-count"></div>
             <span class="method-badge" id="method-badge"></span>
           </div>
-          <div class="save-buttons" id="save-buttons">
-            <button
-              class="btn-save"
-              onclick="saveAsReport()"
-              title="Clean HTML report — open in any browser"
-            >
-              ↓ save report
+          <div class="header-actions">
+            <button class="btn-icon" id="btn-copy" onclick="copyData()">
+              ⎘ Copy
             </button>
-            <button
-              class="btn-save ml"
-              onclick="saveAsJSONL()"
-              title="JSONL format — ready for ML training pipelines"
-            >
-              ↓ save for ml
+            <button class="btn-icon" id="btn-report" onclick="saveAsReport()">
+              ↓ Report
+            </button>
+            <button class="btn-icon ml" id="btn-ml" onclick="saveAsJSONL()">
+              ↓ Save for ML
             </button>
           </div>
         </div>
 
-        <div class="results-body">
+        <!-- Search bar — only visible after results load -->
+        <div class="search-bar" id="search-bar">
+          <div class="search-wrap">
+            <span class="search-icon">⌕</span>
+            <input
+              type="text"
+              id="search-input"
+              placeholder="Search results..."
+              oninput="filterTable()"
+            />
+          </div>
+          <div class="search-count" id="search-count"></div>
+        </div>
+
+        <div class="results-body" id="results-body">
           <div class="error-bar" id="error-bar"></div>
 
           <div class="empty-state" id="empty-state">
@@ -626,10 +813,15 @@
 
           <div class="loading-state" id="loading-state">
             <div class="spinner"></div>
-            <p id="loading-msg">fetching page...</p>
+            <p id="loading-msg">reading page...</p>
           </div>
 
-          <div class="result-grid" id="result-grid" style="display: none"></div>
+          <div class="data-table-wrap" id="data-table-wrap">
+            <table id="data-table">
+              <thead id="table-head"></thead>
+              <tbody id="table-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -637,7 +829,6 @@
     <script>
       let scrapedData = null;
 
-      // ── XSS protection ──
       function escapeHTML(str) {
         if (str === null || str === undefined) return null;
         return String(str)
@@ -648,11 +839,21 @@
           .replace(/'/g, "&#039;");
       }
 
+      function isURL(str) {
+        return (
+          str &&
+          (String(str).startsWith("http://") ||
+            String(str).startsWith("https://"))
+        );
+      }
+
+      function isImageURL(str) {
+        return str && /\.(jpg|jpeg|png|gif|webp|svg|avif)(\?.*)?$/i.test(str);
+      }
+
       function toggleAdvanced() {
-        const content = document.getElementById("advanced-content");
-        const arrow = document.getElementById("toggle-arrow");
-        content.classList.toggle("open");
-        arrow.classList.toggle("open");
+        document.getElementById("advanced-content").classList.toggle("open");
+        document.getElementById("toggle-arrow").classList.toggle("open");
       }
 
       function addSelector() {
@@ -688,43 +889,96 @@
         document.getElementById("empty-state").style.display = on
           ? "none"
           : "flex";
-        document.getElementById("result-grid").style.display = "none";
+        document.getElementById("data-table-wrap").classList.remove("show");
         if (msg) document.getElementById("loading-msg").textContent = msg;
       }
 
-      function renderResults(data) {
-        const grid = document.getElementById("result-grid");
-        grid.innerHTML = "";
+      // ── Search / filter ──
+      function filterTable() {
+        const query = document
+          .getElementById("search-input")
+          .value.toLowerCase()
+          .trim();
+        const rows = document.querySelectorAll("#table-body tr");
+        let visibleCount = 0;
 
-        data.data.forEach((item, i) => {
-          const div = document.createElement("div");
-          div.className = "result-item";
-
-          const lines = Object.entries(item)
-            .map(([k, v]) => {
-              const val =
-                v === null
-                  ? `<span class="null-color">null</span>`
-                  : `<span class="val-color">"${escapeHTML(v)}"</span>`;
-              return `  <span class="key-color">"${escapeHTML(k)}"</span>: ${val}`;
-            })
-            .join("\n");
-
-          div.innerHTML = `
-            <div class="result-item-header">ITEM ${String(i + 1).padStart(2, "0")}</div>
-            <pre>${lines}</pre>
-          `;
-          grid.appendChild(div);
+        rows.forEach((row) => {
+          const text = row.textContent.toLowerCase();
+          if (!query || text.includes(query)) {
+            row.classList.remove("hidden");
+            visibleCount++;
+          } else {
+            row.classList.add("hidden");
+          }
         });
 
+        const total = rows.length;
+        const countEl = document.getElementById("search-count");
+        if (query) {
+          countEl.innerHTML = `<span>${visibleCount}</span> of ${total} rows`;
+        } else {
+          countEl.innerHTML = "";
+        }
+      }
+
+      // ── Render results as table ──
+      function renderResults(data) {
+        if (!data.data.length) {
+          showError("No items found — try different fields or check the URL");
+          setLoading(false);
+          return;
+        }
+
+        const fields = Object.keys(data.data[0]);
+
+        // Build header
+        document.getElementById("table-head").innerHTML = `
+          <tr>
+            <th class="row-num">#</th>
+            ${fields.map((f) => `<th>${escapeHTML(f)}</th>`).join("")}
+          </tr>
+        `;
+
+        // Build rows — each item gets its own row, duplicates included
+        const tbody = document.getElementById("table-body");
+        tbody.innerHTML = "";
+
+        data.data.forEach((item, i) => {
+          const tr = document.createElement("tr");
+          const cells = fields
+            .map((f) => {
+              const val = item[f];
+              if (val === null || val === undefined) {
+                return `<td class="null-cell">—</td>`;
+              }
+              const s = String(val);
+              if (isImageURL(s)) {
+                return `<td class="img-cell"><img src="${escapeHTML(s)}" alt="" loading="lazy" onerror="this.style.display='none'"></td>`;
+              }
+              if (isURL(s)) {
+                return `<td class="url-cell"><a href="${escapeHTML(s)}" target="_blank" rel="noopener">${escapeHTML(s)}</a></td>`;
+              }
+              return `<td title="${escapeHTML(s)}" onclick="this.classList.toggle('expanded')">${escapeHTML(s)}</td>`;
+            })
+            .join("");
+
+          tr.innerHTML = `<td class="row-num">${i + 1}</td>${cells}`;
+          tbody.appendChild(tr);
+        });
+
+        // Show table and search bar
         document.getElementById("empty-state").style.display = "none";
         document.getElementById("loading-state").style.display = "none";
-        grid.style.display = "flex";
-        document.getElementById("results-meta").innerHTML =
-          `<span>${data.count}</span> items scraped from ${escapeHTML(data.url)}`;
-        document.getElementById("save-buttons").classList.add("show");
+        document.getElementById("data-table-wrap").classList.add("show");
+        document.getElementById("search-bar").classList.add("show");
+        document.getElementById("search-input").value = "";
+        document.getElementById("search-count").innerHTML = "";
 
-        // Show which method was used
+        // Update counts
+        document.getElementById("results-count").innerHTML =
+          `Rows: <span>${data.count}</span>`;
+
+        // Method badge
         const badge = document.getElementById("method-badge");
         if (data.method) {
           badge.textContent =
@@ -732,8 +986,13 @@
           badge.className = `method-badge ${data.method}`;
           badge.style.display = "inline";
         }
+
+        ["btn-copy", "btn-report", "btn-ml"].forEach((id) => {
+          document.getElementById(id).classList.add("show");
+        });
       }
 
+      // ── Scrape ──
       async function scrapeData() {
         const url = document.getElementById("url").value.trim();
         const fieldsInput = document.getElementById("ai-fields").value.trim();
@@ -747,7 +1006,6 @@
           if (k && v) selectors[k] = v;
         });
 
-        // Parse fields from AI input
         const fields = fieldsInput
           ? fieldsInput
               .split(",")
@@ -761,7 +1019,6 @@
           showError("Enter a URL");
           return;
         }
-
         if (!fields.length && (!container || !Object.keys(selectors).length)) {
           showError(
             "Describe what you want to scrape, or open Advanced and add manual selectors",
@@ -770,10 +1027,14 @@
         }
 
         document.getElementById("scrape-btn").disabled = true;
-        document.getElementById("save-buttons").classList.remove("show");
+        document.getElementById("run-btn").disabled = true;
+        document.getElementById("results-count").innerHTML = "";
         document.getElementById("method-badge").style.display = "none";
+        document.getElementById("search-bar").classList.remove("show");
+        ["btn-copy", "btn-report", "btn-ml"].forEach((id) => {
+          document.getElementById(id).classList.remove("show");
+        });
         setLoading(true, "reading page...");
-        document.getElementById("results-meta").textContent = "scraping...";
 
         try {
           const res = await fetch("/scrape", {
@@ -791,7 +1052,6 @@
             showError(data.error);
             setLoading(false);
             document.getElementById("empty-state").style.display = "flex";
-            document.getElementById("results-meta").textContent = "error";
           }
         } catch (err) {
           showError("Request failed: " + err.message);
@@ -799,20 +1059,30 @@
           document.getElementById("empty-state").style.display = "flex";
         } finally {
           document.getElementById("scrape-btn").disabled = false;
+          document.getElementById("run-btn").disabled = false;
         }
+      }
+
+      // ── Copy ──
+      function copyData() {
+        if (!scrapedData) return;
+        navigator.clipboard
+          .writeText(JSON.stringify(scrapedData.data, null, 2))
+          .then(() => {
+            const btn = document.getElementById("btn-copy");
+            btn.textContent = "✓ Copied";
+            setTimeout(() => (btn.textContent = "⎘ Copy"), 1500);
+          });
       }
 
       // ── Save as HTML report ──
       function saveAsReport() {
         if (!scrapedData) return;
-
         const fields = Object.keys(scrapedData.data[0] || {});
         const timestamp = new Date().toLocaleString();
-
         const tableHeaders = fields
           .map((f) => `<th>${escapeHTML(f)}</th>`)
           .join("");
-
         const tableRows = scrapedData.data
           .map((item, i) => {
             const cells = fields
@@ -854,25 +1124,21 @@
   <div class="footer">Generated by JumpingSpider</div>
 </body>
 </html>`;
-
         download(html, `report_${Date.now()}.html`, "text/html");
       }
 
-      // ── Save as JSONL for ML ──
+      // ── Save as JSONL ──
       function saveAsJSONL() {
         if (!scrapedData) return;
-
         const lines = scrapedData.data
-          .map((item) => {
-            const record = {
+          .map((item) =>
+            JSON.stringify({
               ...item,
               _source: scrapedData.url,
               _scraped_at: new Date().toISOString(),
-            };
-            return JSON.stringify(record);
-          })
+            }),
+          )
           .join("\n");
-
         download(lines, `dataset_${Date.now()}.jsonl`, "application/jsonl");
       }
 
@@ -884,6 +1150,20 @@
         a.click();
         URL.revokeObjectURL(a.href);
       }
+
+      // ── Keyboard shortcut Ctrl+F focuses search ──
+      document.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+          const searchInput = document.getElementById("search-input");
+          if (
+            document.getElementById("search-bar").classList.contains("show")
+          ) {
+            e.preventDefault();
+            searchInput.focus();
+            searchInput.select();
+          }
+        }
+      });
     </script>
   </body>
 </html>

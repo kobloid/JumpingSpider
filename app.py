@@ -132,7 +132,8 @@ Webpage HTML:
 Instructions:
 - Find ALL repeated items on the page that contain these fields, not just the first one
 - Each item should have all the requested fields
-- If a field is missing for an item, use null. Try to avoid using null, and keep searching for a bit until you find it or until you are sure it doesn't exist
+- If a field is missing for an item, try to understand what the user is looking for based on the other things that they are looking for, otherwise null
+- Duplicates may occur, try to organize their repeats accordingly
 - Return ONLY a raw JSON array, no explanation, no markdown, no code fences
 
 Format Example:
@@ -208,11 +209,9 @@ def secure_response(data, status=200):
     resp.headers['Content-Security-Policy'] = "default-src 'self' fonts.googleapis.com fonts.gstatic.com; script-src 'self' 'unsafe-inline'"
     return resp
 
-
 @app.route('/')
 def index():
     return render_template('index.html')
-
 
 @app.route('/scrape', methods=['POST'])
 def scrape():
