@@ -2,6 +2,8 @@ from flask import Flask, jsonify, request, render_template, make_response
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from urllib.parse import urlparse
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import google.generativeai as genai
 import requests
 import os
@@ -13,8 +15,13 @@ load_dotenv()
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
 
 app = Flask(__name__)
-
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day," "50 per hour"]
+)
 
 def allows_scraping(url):
     try:
@@ -214,6 +221,10 @@ def index():
     return render_template('index.html')
 
 @app.route('/scrape', methods=['POST'])
+
+#rate limiter
+@limiter.limit("10 per minute")
+
 def scrape():
     try:
         data = request.json
@@ -271,4 +282,4 @@ def scrape():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000) #change debug=False for deployment
