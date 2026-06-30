@@ -683,9 +683,35 @@
     </style>
   </head>
   <body>
-    <header>
-      <div class="logo">JumpingSpider</div>
-      <div class="logo-sub">web scraper</div>
+    <header
+      style="display: flex; align-items: center; justify-content: space-between"
+    >
+      <div>
+        <div class="logo">JumpingSpider</div>
+        <div class="logo-sub">web scraper</div>
+      </div>
+      <a
+        href="/history"
+        style="
+          font-family: var(--mono);
+          font-size: 12px;
+          color: var(--subtle);
+          text-decoration: none;
+          border: 1px solid var(--border);
+          padding: 8px 16px;
+          border-radius: 4px;
+          transition: all 0.15s;
+        "
+        onmouseover="
+          this.style.color = 'var(--accent)';
+          this.style.borderColor = 'var(--accent)';
+        "
+        onmouseout="
+          this.style.color = 'var(--subtle)';
+          this.style.borderColor = 'var(--border)';
+        "
+        >history → (doesnt work yet)</a
+      >
     </header>
 
     <div class="workspace">
@@ -777,6 +803,13 @@
             <span class="method-badge" id="method-badge"></span>
           </div>
           <div class="header-actions">
+            <button
+              class="btn-icon"
+              id="btn-save-db"
+              onclick="saveToDatabase()"
+            >
+              💾 Save
+            </button>
             <button class="btn-icon" id="btn-copy" onclick="copyData()">
               ⎘ Copy
             </button>
@@ -784,7 +817,7 @@
               ↓ Report
             </button>
             <button class="btn-icon ml" id="btn-ml" onclick="saveAsJSONL()">
-              ↓ Save for ML
+              ↓ Save as jsonl
             </button>
           </div>
         </div>
