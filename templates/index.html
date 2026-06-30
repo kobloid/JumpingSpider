@@ -894,13 +894,6 @@
             <span class="method-badge" id="method-badge"></span>
           </div>
           <div class="header-actions">
-            <button
-              class="btn-icon"
-              id="btn-save-db"
-              onclick="saveToDatabase()"
-            >
-              💾 Save
-            </button>
             <button class="btn-icon" id="btn-copy" onclick="copyData()">
               ⎘ Copy
             </button>
@@ -1048,28 +1041,17 @@
       let scrapedData = null;
       let savedScrapeId = null;
       let selectedFields = [];
+      let usedFields = []; // loaded from /used-fields, most recent first
 
-      const SUGGESTED_FIELDS = [
-        "title",
-        "name",
-        "price",
-        "description",
-        "image",
-        "url",
-        "link",
-        "author",
-        "date",
-        "rating",
-        "category",
-        "location",
-        "email",
-        "phone",
-        "tags",
-        "comment",
-        "username",
-        "views",
-        "likes",
-      ];
+      async function loadUsedFields() {
+        try {
+          const res = await fetch("/used-fields");
+          const data = await res.json();
+          if (data.success) usedFields = data.fields;
+        } catch (err) {
+          usedFields = [];
+        }
+      }
 
       function renderFieldChips() {
         const wrap = document.getElementById("field-chips");
@@ -1106,7 +1088,7 @@
           closeFieldDropdown();
         } else {
           dd.classList.add("open");
-          renderFieldDropdownList("");
+          loadUsedFields().then(() => renderFieldDropdownList(""));
           const input = document.getElementById("field-dropdown-input");
           input.value = "";
           input.focus();
@@ -1121,7 +1103,7 @@
         const list = document.getElementById("field-dropdown-list");
         const q = query.toLowerCase().trim();
 
-        const matches = SUGGESTED_FIELDS.filter(
+        const matches = usedFields.filter(
           (f) => f.includes(q) && !selectedFields.includes(f),
         );
 
@@ -1135,11 +1117,11 @@
             )
             .join("");
         } else if (!q) {
-          html += `<div class="field-dropdown-empty">no more suggestions — type your own</div>`;
+          html += `<div class="field-dropdown-empty">${usedFields.length ? "no more recent fields" : "no history yet — type a field name"}</div>`;
         }
 
-        // Show "add custom" option whenever there's typed text not already in the list
-        if (q && !SUGGESTED_FIELDS.includes(q)) {
+        // Show "add custom" option whenever there's typed text not already suggested
+        if (q && !usedFields.includes(q)) {
           html += `<div class="field-dropdown-custom" onclick="addField('${escapeHTML(q)}')">+ add "${escapeHTML(q)}"</div>`;
         } else if (q && selectedFields.includes(q)) {
           html += `<div class="field-dropdown-empty">already added</div>`;
@@ -1328,14 +1310,14 @@
           badge.style.display = "inline";
         }
 
-        savedScrapeId = null;
-        const saveBtn = document.getElementById("btn-save-db");
-        saveBtn.textContent = "💾 Save";
-        saveBtn.disabled = false;
+        savedScrapeId = data.saved_id || null;
 
-        ["btn-save-db", "btn-copy", "btn-report", "btn-ml"].forEach((id) => {
+        ["btn-copy", "btn-report", "btn-ml"].forEach((id) => {
           document.getElementById(id).classList.add("show");
         });
+
+        // Scrape was auto-saved on the backend — refresh the recents list
+        loadRecents();
       }
 
       async function scrapeData() {
@@ -1369,7 +1351,7 @@
         document.getElementById("results-count").innerHTML = "";
         document.getElementById("method-badge").style.display = "none";
         document.getElementById("search-bar").classList.remove("show");
-        ["btn-save-db", "btn-copy", "btn-report", "btn-ml"].forEach((id) => {
+        ["btn-copy", "btn-report", "btn-ml"].forEach((id) => {
           document.getElementById(id).classList.remove("show");
         });
         setLoading(true, "reading page...");
@@ -1404,39 +1386,6 @@
           document.getElementById("empty-state").style.display = "flex";
         } finally {
           document.getElementById("run-btn").disabled = false;
-        }
-      }
-
-      // ── Save to database ──
-      async function saveToDatabase() {
-        if (!scrapedData) return;
-        const btn = document.getElementById("btn-save-db");
-        btn.disabled = true;
-        btn.textContent = "saving...";
-
-        try {
-          const res = await fetch("/save", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              url: scrapedData.url,
-              data: scrapedData.data,
-              method: scrapedData.method,
-            }),
-          });
-          const result = await res.json();
-
-          if (result.success) {
-            btn.textContent = "✓ Saved";
-            savedScrapeId = result.id;
-            loadRecents();
-          } else {
-            btn.textContent = "failed";
-            btn.disabled = false;
-          }
-        } catch (err) {
-          btn.textContent = "failed";
-          btn.disabled = false;
         }
       }
 
@@ -1581,7 +1530,7 @@
         clearError();
         setLoading(true, "loading saved scrape...");
         document.getElementById("search-bar").classList.remove("show");
-        ["btn-save-db", "btn-copy", "btn-report", "btn-ml"].forEach((elId) => {
+        ["btn-copy", "btn-report", "btn-ml"].forEach((elId) => {
           document.getElementById(elId).classList.remove("show");
         });
 
@@ -1626,15 +1575,9 @@
             badge.style.display = "inline";
           }
 
-          const saveBtn = document.getElementById("btn-save-db");
-          saveBtn.textContent = "✓ Saved";
-          saveBtn.disabled = true;
-
-          ["btn-save-db", "btn-copy", "btn-report", "btn-ml"].forEach(
-            (elId) => {
-              document.getElementById(elId).classList.add("show");
-            },
-          );
+          ["btn-copy", "btn-report", "btn-ml"].forEach((elId) => {
+            document.getElementById(elId).classList.add("show");
+          });
         } catch (err) {
           showError("Failed to load saved scrape");
           setLoading(false);
@@ -1659,6 +1602,11 @@
             searchInput.select();
           }
         }
+      });
+
+      // Refresh history when user tabs back to this page
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) loadHistory();
       });
 
       loadRecents();

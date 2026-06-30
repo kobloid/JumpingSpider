@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request, render_template, make_response
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from urllib.parse import urlparse
+from urllib.robotparser import RobotFileParser
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import google.generativeai as genai
@@ -10,8 +11,6 @@ import os
 import json
 import sqlite3
 from datetime import datetime
-
-CLEAN_CHAR_LIM = 60000
 
 load_dotenv()
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
@@ -27,8 +26,9 @@ limiter = Limiter(
 
 DB_PATH = 'scrapes.db'
 
+
 def init_db():
-    """Create the scrapes table if it doesn't exist yet"""
+    """Create the scrapes table and fields table if they don't exist yet"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -41,67 +41,61 @@ def init_db():
             created_at TEXT NOT NULL
         )
     ''')
+    # Tracks every field name ever typed/used, with last_used for ordering
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS used_fields (
+            name TEXT PRIMARY KEY,
+            last_used TEXT NOT NULL,
+            use_count INTEGER DEFAULT 1
+        )
+    ''')
     conn.commit()
     conn.close()
 
+
+# Run once when the app starts
 init_db()
 
-def allows_scraping(url):
-    try:
-        parsed = urlparse(url)
-        robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
-        
-        response = requests.get(robots_url, timeout=5)
-        
-        # If no robots.txt exists, assume allowed
-        if response.status_code == 404:
-            return True
-        
-        lines = response.text.splitlines()
-        
-        current_agent = None
-        allowed = True
+MAX_SAVED_SCRAPES = 10
 
-        for line in lines:
-            line = line.strip()
 
-            # Skip comments and empty lines
-            if not line or line.startswith('#'):
-                continue
+def trim_old_scrapes():
+    """Keep only the most recent MAX_SAVED_SCRAPES rows"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        DELETE FROM scrapes
+        WHERE id NOT IN (
+            SELECT id FROM scrapes ORDER BY created_at DESC LIMIT ?
+        )
+    ''', (MAX_SAVED_SCRAPES,))
+    conn.commit()
+    conn.close()
 
-            # Split each line into key and value
-            if ':' not in line:
-                continue
 
-            key, _, value = line.partition(':')
-            key = key.strip().lower()
-            value = value.strip()
-
-            # Track which user-agent block we're in
-            if key == 'user-agent':
-                current_agent = value.lower()
-
-            # Only care about rules for * (all bots) or our specific agent
-            if current_agent in ('*', 'jumpingspider'):
-                if key == 'disallow' and value == '/':
-                    # Entire site is disallowed
-                    allowed = False
-                elif key == 'disallow' and value and parsed.path.startswith(value):
-                    # This specific path is disallowed
-                    allowed = False
-                elif key == 'allow' and value and parsed.path.startswith(value):
-                    # Explicitly allowed overrides disallow
-                    allowed = True
-
-        return allowed
-
-    except Exception:
-        # If anything goes wrong, assume allowed
-        return True
+def record_used_fields(fields):
+    """Track which field names were used, bump their last_used time"""
+    if not fields:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    for f in fields:
+        f = f.strip().lower()
+        if not f:
+            continue
+        cursor.execute('''
+            INSERT INTO used_fields (name, last_used, use_count)
+            VALUES (?, ?, 1)
+            ON CONFLICT(name) DO UPDATE SET
+                last_used = excluded.last_used,
+                use_count = use_count + 1
+        ''', (f, now))
+    conn.commit()
+    conn.close()
 
 
 def fetch_page(url):
-    """Fetch raw HTML from a URL"""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
     }
@@ -111,74 +105,59 @@ def fetch_page(url):
 
 
 def clean_html(html):
+    """Strip noise, extract visible text with tag/class context"""
     soup = BeautifulSoup(html, 'html.parser')
-    
-    # Remove noise tags
     for tag in soup(['script', 'style', 'noscript', 'meta', 'link', 'head']):
         tag.decompose()
-    
-    # Get visible text with spacing preserved
+
     lines = []
     for tag in soup.find_all(True):
         text = tag.get_text(strip=True)
-        # FIX: Allow single/double digits if they are numbers (like ratings), or any text > 0 chars
-        if (text and (len(text) > 0) or (text.isdigit())): 
+        if text and len(text) > 2:
             classes = ' '.join(tag.get('class', []))
             lines.append(f"[{tag.name}.{classes}] {text[:200]}")
 
+    seen = set()
     unique_lines = []
-    last_line = None
     for line in lines:
-        if line != last_line:
+        if line not in seen:
+            seen.add(line)
             unique_lines.append(line)
-            last_line = line
 
-    return '\n'.join(unique_lines)[:CLEAN_CHAR_LIM]
+    return '\n'.join(unique_lines)[:60000]
 
 
 def extract_with_ai(html, url, fields):
-    """
-    Send cleaned HTML to Gemini and ask it to extract data directly.
-    Returns a list of dicts or None if it fails.
-    """
     try:
         cleaned = clean_html(html)
-        
-        if len(cleaned) == CLEAN_CHAR_LIM:
-            print(f'Cleaned content character limit reached or exceeded')
-        else:
-            print(f"Cleaned content length: {len(cleaned)} characters")
-        
-        print(f"Estimated items in content: {cleaned.count('[div.')}")
 
-        prompt = f"""You are a data extraction expert. Extract ALL instances of structured data from this webpage HTML.
+        prompt = f"""You are a data extraction expert. Extract ALL instances of structured data from this webpage.
 
 URL: {url}
 Fields to extract: {', '.join(fields)}
 
-Webpage HTML:
+Webpage content:
 {cleaned}
 
-Instructions:
-- Find ALL repeated items on the page that contain these fields, not just the first one
+Rules:
+- Find EVERY repeated item on the page, not just the first one
+- The same entity (e.g. same username) may appear multiple times — include every instance as a separate item, do not deduplicate
 - Each item should have all the requested fields
-- If a field is missing for an item, try to understand what the user is looking for based on the other things that they are looking for, otherwise null
-- Duplicates may occur, try to organize their repeats accordingly
-- Return ONLY a raw JSON array, no explanation, no markdown, no code fences
+- If a field is missing for an item, use null
+- Return ONLY a raw JSON array with ALL items, no explanation, no markdown, no code fences
 
-Format Example:
+Format:
 [
   {{"field1": "value", "field2": "value"}},
   {{"field1": "value", "field2": "value"}}
 ]
-Return ALL item matches that you find.
-"""
+
+Return ALL items you find, not just one."""
 
         model = genai.GenerativeModel('gemini-3.1-flash-lite')
         response = model.generate_content(prompt)
         raw = response.text.strip()
 
-        # Strip markdown fences if Gemini adds them anyway
         if raw.startswith('```'):
             raw = raw.split('\n', 1)[1]
             raw = raw.rsplit('```', 1)[0]
@@ -186,7 +165,6 @@ Return ALL item matches that you find.
         data = json.loads(raw.strip())
 
         if isinstance(data, list) and len(data) > 0:
-            print(data)
             return data
         return None
 
@@ -196,10 +174,6 @@ Return ALL item matches that you find.
 
 
 def extract_with_selectors(html, container, selectors):
-    """
-    Fallback: CSS selector approach using BeautifulSoup.
-    Used when AI fails or user provides manual selectors.
-    """
     soup = BeautifulSoup(html, 'html.parser')
     containers = soup.select(container)
     items = []
@@ -215,7 +189,6 @@ def extract_with_selectors(html, container, selectors):
 
 
 def is_url_safe(url):
-    """Block internal network URLs"""
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
@@ -231,22 +204,38 @@ def is_url_safe(url):
         return False
 
 
+def allows_scraping(url):
+    try:
+        parsed = urlparse(url)
+        robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+        rp = RobotFileParser()
+        rp.set_url(robots_url)
+        rp.read()
+        return rp.can_fetch('*', url)
+    except Exception:
+        return True
+
+
 def secure_response(data, status=200):
-    """Wrap jsonify response with security headers"""
     resp = make_response(jsonify(data), status)
     resp.headers['X-Content-Type-Options'] = 'nosniff'
     resp.headers['X-Frame-Options'] = 'DENY'
     resp.headers['Content-Security-Policy'] = "default-src 'self' fonts.googleapis.com fonts.gstatic.com; script-src 'self' 'unsafe-inline'"
     return resp
 
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/scrape', methods=['POST'])
-#rate limiter
-@limiter.limit("10 per minute")
 
+@app.route('/history')
+def history():
+    return render_template('history.html')
+
+
+@app.route('/scrape', methods=['POST'])
+@limiter.limit("10 per minute")
 def scrape():
     try:
         data = request.json
@@ -255,7 +244,6 @@ def scrape():
         container = data.get('container', '')
         selectors = data.get('selectors', {})
 
-        # Validate
         if not url:
             return secure_response({'success': False, 'error': 'URL is required'}, 400)
 
@@ -264,11 +252,13 @@ def scrape():
 
         if not is_url_safe(url):
             return secure_response({'success': False, 'error': 'That URL is not allowed'}, 400)
-        
+
+        if not allows_scraping(url):
+            return secure_response({'success': False, 'error': 'This site does not allow scraping (robots.txt)'}, 403)
+
         if not fields and not (container and selectors):
             return secure_response({'success': False, 'error': 'Provide fields for AI or manual selectors'}, 400)
 
-        # Fetch
         try:
             html = fetch_page(url)
         except Exception as e:
@@ -277,13 +267,11 @@ def scrape():
         items = None
         method = None
 
-        # Try AI first if fields provided
         if fields:
             items = extract_with_ai(html, url, fields)
             if items is not None:
                 method = 'ai'
 
-        # Fall back to selectors
         if items is None and container and selectors:
             items = extract_with_selectors(html, container, selectors)
             method = 'selectors'
@@ -291,13 +279,52 @@ def scrape():
         if not items:
             return secure_response({'success': False, 'error': 'No data found — try manual selectors or a different URL'}, 500)
 
+        # Track which field names were used (for dropdown suggestions)
+        if fields:
+            record_used_fields(fields)
+
+        # Auto-save this scrape, then trim to the most recent MAX_SAVED_SCRAPES
+        saved_id = None
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                'INSERT INTO scrapes (url, data, item_count, method, created_at) VALUES (?, ?, ?, ?, ?)',
+                (url, json.dumps(items), len(items), method, datetime.now().isoformat())
+            )
+            conn.commit()
+            saved_id = cursor.lastrowid
+            conn.close()
+            trim_old_scrapes()
+        except Exception as e:
+            print(f"Auto-save failed: {e}")
+
         return secure_response({
             'success': True,
             'count': len(items),
             'data': items,
             'url': url,
-            'method': method
+            'method': method,
+            'saved_id': saved_id
         })
+
+    except Exception as e:
+        return secure_response({'success': False, 'error': str(e)}, 500)
+
+
+@app.route('/used-fields', methods=['GET'])
+def get_used_fields():
+    """Return field names ordered by most recently used, for dropdown suggestions"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute('SELECT name FROM used_fields ORDER BY last_used DESC LIMIT 30')
+        rows = cursor.fetchall()
+        conn.close()
+
+        names = [row['name'] for row in rows]
+        return secure_response({'success': True, 'fields': names})
 
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
@@ -312,10 +339,10 @@ def save_scrape():
         url = payload.get('url', '').strip()
         items = payload.get('data', [])
         method = payload.get('method', 'unknown')
- 
+
         if not url or not items:
             return secure_response({'success': False, 'error': 'No data to save'}, 400)
- 
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
@@ -325,9 +352,9 @@ def save_scrape():
         conn.commit()
         new_id = cursor.lastrowid
         conn.close()
- 
+
         return secure_response({'success': True, 'id': new_id})
- 
+
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
 
@@ -342,10 +369,10 @@ def get_saved_scrapes():
         cursor.execute('SELECT id, url, item_count, method, created_at FROM scrapes ORDER BY created_at DESC')
         rows = cursor.fetchall()
         conn.close()
- 
+
         scrapes = [dict(row) for row in rows]
         return secure_response({'success': True, 'scrapes': scrapes})
- 
+
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
 
@@ -360,17 +387,17 @@ def get_saved_scrape(scrape_id):
         cursor.execute('SELECT * FROM scrapes WHERE id = ?', (scrape_id,))
         row = cursor.fetchone()
         conn.close()
- 
+
         if not row:
             return secure_response({'success': False, 'error': 'Not found'}, 404)
- 
+
         result = dict(row)
         result['data'] = json.loads(result['data'])
         return secure_response({'success': True, 'scrape': result})
- 
+
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
-    
+
 
 @app.route('/saved/<int:scrape_id>', methods=['DELETE'])
 def delete_saved_scrape(scrape_id):
@@ -382,16 +409,15 @@ def delete_saved_scrape(scrape_id):
         conn.commit()
         deleted = cursor.rowcount
         conn.close()
- 
+
         if deleted == 0:
             return secure_response({'success': False, 'error': 'Not found'}, 404)
- 
+
         return secure_response({'success': True})
- 
+
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000) #change debug=False for deployment
-    print("Make sure to change debug to False during deployment")
+    app.run(debug=False, port=5000)
