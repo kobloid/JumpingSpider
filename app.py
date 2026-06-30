@@ -8,6 +8,8 @@ import google.generativeai as genai
 import requests
 import os
 import json
+import sqlite3
+from datetime import datetime
 
 CLEAN_CHAR_LIM = 60000
 
@@ -20,8 +22,29 @@ app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per day," "50 per hour"]
+    default_limits=["200 per day", "50 per hour"]
 )
+
+DB_PATH = 'scrapes.db'
+
+def init_db():
+    """Create the scrapes table if it doesn't exist yet"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS scrapes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL,
+            data TEXT NOT NULL,
+            item_count INTEGER NOT NULL,
+            method TEXT,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
 
 def allows_scraping(url):
     try:
@@ -221,7 +244,6 @@ def index():
     return render_template('index.html')
 
 @app.route('/scrape', methods=['POST'])
-
 #rate limiter
 @limiter.limit("10 per minute")
 
@@ -281,5 +303,95 @@ def scrape():
         return secure_response({'success': False, 'error': str(e)}, 500)
 
 
+@app.route('/save', methods=['POST'])
+@limiter.limit("20 per minute")
+def save_scrape():
+    """Save a scrape result to the database"""
+    try:
+        payload = request.json
+        url = payload.get('url', '').strip()
+        items = payload.get('data', [])
+        method = payload.get('method', 'unknown')
+ 
+        if not url or not items:
+            return secure_response({'success': False, 'error': 'No data to save'}, 400)
+ 
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            'INSERT INTO scrapes (url, data, item_count, method, created_at) VALUES (?, ?, ?, ?, ?)',
+            (url, json.dumps(items), len(items), method, datetime.now().isoformat())
+        )
+        conn.commit()
+        new_id = cursor.lastrowid
+        conn.close()
+ 
+        return secure_response({'success': True, 'id': new_id})
+ 
+    except Exception as e:
+        return secure_response({'success': False, 'error': str(e)}, 500)
+
+
+@app.route('/saved', methods=['GET'])
+def get_saved_scrapes():
+    """Return a list of all saved scrapes (without full data, for the history list)"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, url, item_count, method, created_at FROM scrapes ORDER BY created_at DESC')
+        rows = cursor.fetchall()
+        conn.close()
+ 
+        scrapes = [dict(row) for row in rows]
+        return secure_response({'success': True, 'scrapes': scrapes})
+ 
+    except Exception as e:
+        return secure_response({'success': False, 'error': str(e)}, 500)
+
+
+@app.route('/saved/<int:scrape_id>', methods=['GET'])
+def get_saved_scrape(scrape_id):
+    """Return the full data for one saved scrape"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM scrapes WHERE id = ?', (scrape_id,))
+        row = cursor.fetchone()
+        conn.close()
+ 
+        if not row:
+            return secure_response({'success': False, 'error': 'Not found'}, 404)
+ 
+        result = dict(row)
+        result['data'] = json.loads(result['data'])
+        return secure_response({'success': True, 'scrape': result})
+ 
+    except Exception as e:
+        return secure_response({'success': False, 'error': str(e)}, 500)
+    
+
+@app.route('/saved/<int:scrape_id>', methods=['DELETE'])
+def delete_saved_scrape(scrape_id):
+    """Delete a saved scrape"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM scrapes WHERE id = ?', (scrape_id,))
+        conn.commit()
+        deleted = cursor.rowcount
+        conn.close()
+ 
+        if deleted == 0:
+            return secure_response({'success': False, 'error': 'Not found'}, 404)
+ 
+        return secure_response({'success': True})
+ 
+    except Exception as e:
+        return secure_response({'success': False, 'error': str(e)}, 500)
+
+
 if __name__ == "__main__":
-    app.run(debug=False, port=5000) #change debug=False for deployment
+    app.run(debug=True, port=5000) #change debug=False for deployment
+    print("Make sure to change debug to False during deployment")
