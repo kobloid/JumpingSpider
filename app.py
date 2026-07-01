@@ -56,7 +56,7 @@ def init_db():
 # Run once when the app starts
 init_db()
 
-MAX_SAVED_SCRAPES = 10
+MAX_SAVED_SCRAPES = 30
 
 
 def trim_old_scrapes():

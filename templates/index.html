@@ -838,6 +838,48 @@
         cursor: not-allowed;
       }
 
+      .recent-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        margin-bottom: 2px;
+      }
+
+      .recent-item:hover {
+        background: var(--surface);
+      }
+      .recent-item.active {
+        background: var(--surface2);
+      }
+
+      .recent-item-content {
+        flex: 1;
+        min-width: 0;
+        cursor: pointer;
+      }
+
+      .recent-delete-btn {
+        background: none;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 11px;
+        padding: 4px 6px;
+        border-radius: 3px;
+        opacity: 0;
+        transition: all 0.15s;
+        flex-shrink: 0;
+      }
+
+      .recent-item:hover .recent-delete-btn {
+        opacity: 1;
+      }
+      .recent-delete-btn:hover {
+        color: var(--error);
+      }
+
       .ai-status {
         font-family: var(--mono);
         font-size: 11px;
@@ -1510,13 +1552,16 @@
                 .replace(/^https?:\/\//, "")
                 .replace(/\/$/, "");
               return `
-              <div class="recent-item" data-id="${s.id}" onclick="loadRecentScrape(${s.id})">
-                <div class="recent-item-url">${escapeHTML(displayUrl)}</div>
-                <div class="recent-item-meta">
-                  <span class="count">${s.item_count}</span>
-                  <span>·</span>
-                  <span>${formatRelativeDate(s.created_at)}</span>
+              <div class="recent-item" data-id="${s.id}">
+                <div class="recent-item-content" onclick="loadRecentScrape(${s.id})">
+                  <div class="recent-item-url">${escapeHTML(displayUrl)}</div>
+                  <div class="recent-item-meta">
+                    <span class="count">${s.item_count}</span>
+                    <span>·</span>
+                    <span>${formatRelativeDate(s.created_at)}</span>
+                  </div>
                 </div>
+                <button class="recent-delete-btn" onclick="deleteRecent(${s.id})" title="Delete">✕</button>
               </div>
             `;
             })
@@ -1582,6 +1627,28 @@
           showError("Failed to load saved scrape");
           setLoading(false);
           document.getElementById("empty-state").style.display = "flex";
+        }
+      }
+
+      async function deleteRecent(id) {
+        try {
+          await fetch(`/saved/${id}`, { method: "DELETE" });
+          // If the deleted scrape is currently displayed, clear the table
+          if (savedScrapeId === id) {
+            scrapedData = null;
+            savedScrapeId = null;
+            document.getElementById("data-table-wrap").classList.remove("show");
+            document.getElementById("search-bar").classList.remove("show");
+            document.getElementById("empty-state").style.display = "flex";
+            document.getElementById("results-count").innerHTML = "";
+            document.getElementById("method-badge").style.display = "none";
+            ["btn-copy", "btn-report", "btn-ml"].forEach((id) => {
+              document.getElementById(id).classList.remove("show");
+            });
+          }
+          loadRecents();
+        } catch (err) {
+          console.error("Delete failed:", err);
         }
       }
 
