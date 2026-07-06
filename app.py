@@ -1,4 +1,6 @@
 from flask import Flask, jsonify, request, render_template, make_response
+from flask_bcrypt import Bcrypt
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from urllib.parse import urlparse
@@ -16,6 +18,12 @@ load_dotenv()
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
 
 app = Flask(__name__)
+
+app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-change-in-production')
+bcrypt = Bcrypt(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
 
 limiter = Limiter(
@@ -28,33 +36,65 @@ DB_PATH = 'scrapes.db'
 
 
 def init_db():
-    """Create the scrapes table and fields table if they don't exist yet"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    ''')
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS scrapes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
             url TEXT NOT NULL,
             data TEXT NOT NULL,
             item_count INTEGER NOT NULL,
             method TEXT,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
         )
     ''')
-    # Tracks every field name ever typed/used, with last_used for ordering
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS used_fields (
-            name TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
             last_used TEXT NOT NULL,
-            use_count INTEGER DEFAULT 1
+            use_count INTEGER DEFAULT 1,
+            PRIMARY KEY (user_id, name)
         )
     ''')
+
     conn.commit()
     conn.close()
 
-
 # Run once when the app starts
 init_db()
+
+class User(UserMixin):
+    def __init__(self, id, username, email):
+        self.id = id
+        self.username = username
+        self.email = email
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return User(row['id'], row['username'], row['email'])
+    return None
 
 MAX_SAVED_SCRAPES = 30
 
@@ -73,9 +113,8 @@ def trim_old_scrapes():
     conn.close()
 
 
-def record_used_fields(fields):
-    """Track which field names were used, bump their last_used time"""
-    if not fields:
+def record_used_fields(fields, user_id):
+    if not fields or not user_id:
         return
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -85,12 +124,12 @@ def record_used_fields(fields):
         if not f:
             continue
         cursor.execute('''
-            INSERT INTO used_fields (name, last_used, use_count)
-            VALUES (?, ?, 1)
-            ON CONFLICT(name) DO UPDATE SET
+            INSERT INTO used_fields (user_id, name, last_used, use_count)
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT(user_id, name) DO UPDATE SET
                 last_used = excluded.last_used,
                 use_count = use_count + 1
-        ''', (f, now))
+        ''', (user_id, f, now))
     conn.commit()
     conn.close()
 
