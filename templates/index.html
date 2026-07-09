@@ -43,6 +43,122 @@
         padding: 20px 40px;
       }
 
+      .header-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .auth-btn {
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--subtle);
+        cursor: pointer;
+        padding: 8px 16px;
+        font-family: var(--mono);
+        font-size: 12px;
+        transition: all 0.15s;
+      }
+
+      .auth-btn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .user-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--subtle);
+      }
+
+      .user-info .username {
+        color: var(--accent);
+      }
+
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 100;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-overlay.show {
+        display: flex;
+      }
+
+      .modal {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        width: 320px;
+        padding: 24px;
+      }
+
+      .modal-tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 20px;
+        background: var(--bg);
+        border-radius: 6px;
+        padding: 3px;
+      }
+
+      .modal-tab {
+        flex: 1;
+        background: none;
+        border: none;
+        border-radius: 4px;
+        padding: 8px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--subtle);
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .modal-tab.active {
+        background: var(--surface2);
+        color: var(--accent);
+      }
+
+      .modal-error {
+        display: none;
+        background: var(--error-dim);
+        border: 1px solid var(--error);
+        border-radius: 4px;
+        padding: 8px 10px;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--error);
+        margin-bottom: 12px;
+      }
+
+      .modal-error.show {
+        display: block;
+      }
+
+      .modal-close {
+        position: absolute;
+        top: 14px;
+        right: 16px;
+        background: none;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      .modal {
+        position: relative;
+      }
+
       .logo {
         font-family: var(--mono);
         font-size: 18px;
@@ -909,8 +1025,17 @@
   </head>
   <body>
     <header>
-      <div class="logo">JumpingSpider</div>
-      <div class="logo-sub">web scraper</div>
+      <div class="header-inner">
+        <div>
+          <div class="logo">JumpingSpider</div>
+          <div class="logo-sub">web scraper</div>
+        </div>
+        <div id="auth-area">
+          <button class="auth-btn" id="auth-btn" onclick="openAuthModal()">
+            Sign in
+          </button>
+        </div>
+      </div>
     </header>
 
     <div class="workspace">
@@ -919,11 +1044,6 @@
         <div class="recents-header">Recents</div>
         <div class="recents-list" id="recents-list">
           <div class="recents-empty">loading...</div>
-        </div>
-        <div class="history-btn-wrap">
-          <button class="history-btn" onclick="viewHistoryClicked()">
-            View History (work in progress)
-          </button>
         </div>
       </div>
 
@@ -1079,7 +1199,212 @@
       </div>
     </div>
 
+    <div
+      class="modal-overlay"
+      id="auth-modal-overlay"
+      onclick="if (event.target === this) closeAuthModal();"
+    >
+      <div class="modal">
+        <button class="modal-close" onclick="closeAuthModal()">✕</button>
+        <div class="modal-tabs">
+          <button
+            class="modal-tab active"
+            id="tab-login"
+            onclick="switchAuthTab('login')"
+          >
+            Sign in
+          </button>
+          <button
+            class="modal-tab"
+            id="tab-register"
+            onclick="switchAuthTab('register')"
+          >
+            Register
+          </button>
+        </div>
+        <div class="modal-error" id="modal-error"></div>
+
+        <div id="login-form">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="login-username" placeholder="" />
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="login-password" placeholder="••••••••" />
+          </div>
+          <button class="btn-primary" onclick="handleLogin()">Sign in</button>
+        </div>
+
+        <div id="register-form" style="display: none">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="register-username" placeholder="" />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input
+              type="text"
+              id="register-email"
+              placeholder="you@example.com"
+            />
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input
+              type="password"
+              id="register-password"
+              placeholder="min. 8 characters"
+            />
+          </div>
+          <button class="btn-primary" onclick="handleRegister()">
+            Create account
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script>
+      let currentUser = null; // null = guest
+
+      function openAuthModal() {
+        document.getElementById("auth-modal-overlay").classList.add("show");
+        hideModalError();
+      }
+
+      function closeAuthModal() {
+        document.getElementById("auth-modal-overlay").classList.remove("show");
+      }
+
+      function switchAuthTab(tab) {
+        hideModalError();
+        document
+          .getElementById("tab-login")
+          .classList.toggle("active", tab === "login");
+        document
+          .getElementById("tab-register")
+          .classList.toggle("active", tab === "register");
+        document.getElementById("login-form").style.display =
+          tab === "login" ? "block" : "none";
+        document.getElementById("register-form").style.display =
+          tab === "register" ? "block" : "none";
+      }
+
+      function showModalError(msg) {
+        const el = document.getElementById("modal-error");
+        el.textContent = msg;
+        el.classList.add("show");
+      }
+
+      function hideModalError() {
+        document.getElementById("modal-error").classList.remove("show");
+      }
+
+      function renderAuthArea() {
+        const area = document.getElementById("auth-area");
+        if (currentUser) {
+          area.innerHTML = `
+            <div class="user-info">
+              <span>signed in as <span class="username">${escapeHTML(currentUser)}</span></span>
+              <button class="auth-btn" onclick="handleLogout()">Sign out</button>
+            </div>
+          `;
+        } else {
+          area.innerHTML = `<button class="auth-btn" onclick="openAuthModal()">Sign in</button>`;
+        }
+      }
+
+      async function checkAuthStatus() {
+        try {
+          const res = await fetch("/me");
+          const data = await res.json();
+          currentUser = data.authenticated ? data.username : null;
+        } catch (err) {
+          currentUser = null;
+        }
+        renderAuthArea();
+      }
+
+      async function handleLogin() {
+        hideModalError();
+        const username = document.getElementById("login-username").value.trim();
+        const password = document.getElementById("login-password").value;
+
+        if (!username || !password) {
+          showModalError("Enter your username and password");
+          return;
+        }
+
+        try {
+          const res = await fetch("/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            showModalError(data.error || "Login failed");
+            return;
+          }
+
+          currentUser = data.username;
+          renderAuthArea();
+          closeAuthModal();
+          loadRecents();
+        } catch (err) {
+          showModalError("Request failed — try again");
+        }
+      }
+
+      async function handleRegister() {
+        hideModalError();
+        const username = document
+          .getElementById("register-username")
+          .value.trim();
+        const email = document.getElementById("register-email").value.trim();
+        const password = document.getElementById("register-password").value;
+
+        if (!username || !email || !password) {
+          showModalError("Fill in all fields");
+          return;
+        }
+
+        try {
+          const res = await fetch("/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, email, password }),
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            showModalError(data.error || "Registration failed");
+            return;
+          }
+
+          currentUser = data.username;
+          renderAuthArea();
+          closeAuthModal();
+          loadRecents();
+        } catch (err) {
+          showModalError("Request failed — try again");
+        }
+      }
+
+      async function handleLogout() {
+        try {
+          await fetch("/logout", { method: "POST" });
+        } catch (err) {
+          // ignore — clear client state regardless
+        }
+        currentUser = null;
+        renderAuthArea();
+        scrapedData = null;
+        savedScrapeId = null;
+        loadRecents();
+      }
+
       let scrapedData = null;
       let savedScrapeId = null;
       let selectedFields = [];
@@ -1537,6 +1862,12 @@
 
       async function loadRecents() {
         const list = document.getElementById("recents-list");
+
+        if (!currentUser) {
+          list.innerHTML = `<div class="recents-empty">sign in to save history</div>`;
+          return;
+        }
+
         try {
           const res = await fetch("/saved");
           const data = await res.json();
@@ -1673,10 +2004,10 @@
 
       // Refresh history when user tabs back to this page
       document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) loadHistory();
+        if (!document.hidden) loadRecents();
       });
 
-      loadRecents();
+      checkAuthStatus().then(loadRecents);
     </script>
   </body>
 </html>

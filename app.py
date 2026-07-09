@@ -24,6 +24,10 @@ bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
+@login_manager.unauthorized_handler
+def unauthorized():
+    return jsonify({'success': False, 'error': 'Login required'}), 401
+
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
 
 limiter = Limiter(
@@ -33,6 +37,11 @@ limiter = Limiter(
 )
 
 DB_PATH = 'scrapes.db'
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def init_db():
@@ -99,16 +108,15 @@ def load_user(user_id):
 MAX_SAVED_SCRAPES = 30
 
 
-def trim_old_scrapes():
-    """Keep only the most recent MAX_SAVED_SCRAPES rows"""
+def trim_old_scrapes(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         DELETE FROM scrapes
-        WHERE id NOT IN (
-            SELECT id FROM scrapes ORDER BY created_at DESC LIMIT ?
+        WHERE user_id = ? AND id NOT IN (
+            SELECT id FROM scrapes WHERE user_id = ? ORDER BY created_at DESC LIMIT ?
         )
-    ''', (MAX_SAVED_SCRAPES,))
+    ''', (user_id, user_id, MAX_SAVED_SCRAPES))
     conn.commit()
     conn.close()
 
@@ -285,16 +293,12 @@ def scrape():
 
         if not url:
             return secure_response({'success': False, 'error': 'URL is required'}, 400)
-
         if not url.startswith(('http://', 'https://')):
             return secure_response({'success': False, 'error': 'URL must start with http:// or https://'}, 400)
-
         if not is_url_safe(url):
             return secure_response({'success': False, 'error': 'That URL is not allowed'}, 400)
-
         if not allows_scraping(url):
             return secure_response({'success': False, 'error': 'This site does not allow scraping (robots.txt)'}, 403)
-
         if not fields and not (container and selectors):
             return secure_response({'success': False, 'error': 'Provide fields for AI or manual selectors'}, 400)
 
@@ -318,25 +322,25 @@ def scrape():
         if not items:
             return secure_response({'success': False, 'error': 'No data found — try manual selectors or a different URL'}, 500)
 
-        # Track which field names were used (for dropdown suggestions)
-        if fields:
-            record_used_fields(fields)
-
-        # Auto-save this scrape, then trim to the most recent MAX_SAVED_SCRAPES
+        # Only track field usage and auto-save for logged-in users
         saved_id = None
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute(
-                'INSERT INTO scrapes (url, data, item_count, method, created_at) VALUES (?, ?, ?, ?, ?)',
-                (url, json.dumps(items), len(items), method, datetime.now().isoformat())
-            )
-            conn.commit()
-            saved_id = cursor.lastrowid
-            conn.close()
-            trim_old_scrapes()
-        except Exception as e:
-            print(f"Auto-save failed: {e}")
+        if current_user.is_authenticated:
+            if fields:
+                record_used_fields(fields, current_user.id)
+
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    'INSERT INTO scrapes (user_id, url, data, item_count, method, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+                    (current_user.id, url, json.dumps(items), len(items), method, datetime.now().isoformat())
+                )
+                conn.commit()
+                saved_id = cursor.lastrowid
+                conn.close()
+                trim_old_scrapes(current_user.id)
+            except Exception as e:
+                print(f"Auto-save failed: {e}")
 
         return secure_response({
             'success': True,
@@ -350,29 +354,29 @@ def scrape():
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
 
-
 @app.route('/used-fields', methods=['GET'])
 def get_used_fields():
-    """Return field names ordered by most recently used, for dropdown suggestions"""
+    if not current_user.is_authenticated:
+        return secure_response({'success': True, 'fields': []})
+
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT name FROM used_fields ORDER BY last_used DESC LIMIT 30')
+        cursor.execute(
+            'SELECT name FROM used_fields WHERE user_id = ? ORDER BY last_used DESC LIMIT 30',
+            (current_user.id,)
+        )
         rows = cursor.fetchall()
         conn.close()
-
         names = [row['name'] for row in rows]
         return secure_response({'success': True, 'fields': names})
-
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
 
-
 @app.route('/save', methods=['POST'])
+@login_required
 @limiter.limit("20 per minute")
 def save_scrape():
-    """Save a scrape result to the database"""
     try:
         payload = request.json
         url = payload.get('url', '').strip()
@@ -382,48 +386,48 @@ def save_scrape():
         if not url or not items:
             return secure_response({'success': False, 'error': 'No data to save'}, 400)
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            'INSERT INTO scrapes (url, data, item_count, method, created_at) VALUES (?, ?, ?, ?, ?)',
-            (url, json.dumps(items), len(items), method, datetime.now().isoformat())
+            'INSERT INTO scrapes (user_id, url, data, item_count, method, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+            (current_user.id, url, json.dumps(items), len(items), method, datetime.now().isoformat())
         )
         conn.commit()
         new_id = cursor.lastrowid
         conn.close()
-
         return secure_response({'success': True, 'id': new_id})
-
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
 
 
 @app.route('/saved', methods=['GET'])
+@login_required
 def get_saved_scrapes():
-    """Return a list of all saved scrapes (without full data, for the history list)"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, url, item_count, method, created_at FROM scrapes ORDER BY created_at DESC')
+        cursor.execute(
+            'SELECT id, url, item_count, method, created_at FROM scrapes WHERE user_id = ? ORDER BY created_at DESC',
+            (current_user.id,)
+        )
         rows = cursor.fetchall()
         conn.close()
-
         scrapes = [dict(row) for row in rows]
         return secure_response({'success': True, 'scrapes': scrapes})
-
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
 
 
 @app.route('/saved/<int:scrape_id>', methods=['GET'])
+@login_required
 def get_saved_scrape(scrape_id):
-    """Return the full data for one saved scrape"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM scrapes WHERE id = ?', (scrape_id,))
+        cursor.execute(
+            'SELECT * FROM scrapes WHERE id = ? AND user_id = ?',
+            (scrape_id, current_user.id)
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -433,18 +437,20 @@ def get_saved_scrape(scrape_id):
         result = dict(row)
         result['data'] = json.loads(result['data'])
         return secure_response({'success': True, 'scrape': result})
-
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
 
 
 @app.route('/saved/<int:scrape_id>', methods=['DELETE'])
+@login_required
 def delete_saved_scrape(scrape_id):
-    """Delete a saved scrape"""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('DELETE FROM scrapes WHERE id = ?', (scrape_id,))
+        cursor.execute(
+            'DELETE FROM scrapes WHERE id = ? AND user_id = ?',
+            (scrape_id, current_user.id)
+        )
         conn.commit()
         deleted = cursor.rowcount
         conn.close()
@@ -453,9 +459,90 @@ def delete_saved_scrape(scrape_id):
             return secure_response({'success': False, 'error': 'Not found'}, 404)
 
         return secure_response({'success': True})
-
     except Exception as e:
         return secure_response({'success': False, 'error': str(e)}, 500)
+
+
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data.get('username', '').strip()
+    email = data.get('email', '').strip()
+    password = data.get('password', '')
+
+    # Basic validation
+    if not username or not email or not password:
+        return jsonify({'error': 'Username, email, and password are required'}), 400
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Check for existing user
+    existing = cur.execute(
+        'SELECT id FROM users WHERE username = ? OR email = ?',
+        (username, email)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({'error': 'Username or email already taken'}), 409
+
+    # Hash and store
+    password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+    cur.execute(
+        'INSERT INTO users (username, email, password_hash, created_at) VALUES (?, ?, ?, ?)',
+        (username, email, password_hash, datetime.utcnow().isoformat())
+    )
+    conn.commit()
+    user_id = cur.lastrowid
+    conn.close()
+
+    # Log them in immediately after registering
+    user = User(user_id, username, email)
+    login_user(user)
+
+    return jsonify({'message': 'Registered successfully', 'username': username}), 201
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+
+    if not username or not password:
+        return jsonify({'error': 'Username and password are required'}), 400
+
+    conn = get_db_connection()
+    row = conn.execute(
+        'SELECT id, username, email, password_hash FROM users WHERE username = ?',
+        (username,)
+    ).fetchone()
+    conn.close()
+
+    # Same error message whether username or password is wrong — see note below
+    if row is None or not bcrypt.check_password_hash(row['password_hash'], password):
+        return jsonify({'error': 'Invalid username or password'}), 401
+
+    user = User(row['id'], row['username'], row['email'])
+    login_user(user)
+
+    return jsonify({'message': 'Logged in successfully', 'username': row['username']}), 200
+
+
+@app.route('/logout', methods=['POST'])
+@login_required
+def logout():
+    logout_user()
+    return jsonify({'message': 'Logged out successfully'}), 200
+
+
+@app.route('/me', methods=['GET'])
+def me():
+    if current_user.is_authenticated:
+        return jsonify({'authenticated': True, 'username': current_user.username})
+    return jsonify({'authenticated': False})
 
 
 if __name__ == "__main__":
