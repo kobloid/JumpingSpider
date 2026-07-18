@@ -38,6 +38,27 @@ limiter = Limiter(
 
 DB_PATH = 'scrapes.db'
 
+def password_check(password):
+    """Returns a list of validation error messages. Empty list = valid password."""
+    special_chars = set('!@#$%&*')
+    errors = []
+
+    if len(password) < 8:
+        errors.append("Password must have at least 8 characters.")
+    if not any(char.isdigit() for char in password):
+        errors.append("Password must contain at least one number.")
+    if not any(char.islower() for char in password):
+        errors.append("Password must contain at least one lowercase character.")
+    if not any(char.isupper() for char in password):
+        errors.append("Password must contain at least one uppercase character.")
+    if not any(char in special_chars for char in password):
+        errors.append("Password must contain at least one special character.")
+    if any(char.isspace() for char in password):
+        errors.append("Password must not contain any spaces.")
+
+    return errors
+    
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -465,6 +486,14 @@ def delete_saved_scrape(scrape_id):
 
 @app.route('/register', methods=['POST'])
 def register():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    errors = password_check(password)
+    if errors:
+        return jsonify({'errors': errors}), 400
+    
     data = request.get_json()
     username = data.get('username', '').strip()
     email = data.get('email', '').strip()

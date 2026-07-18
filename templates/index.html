@@ -657,7 +657,9 @@
         margin-bottom: 6px;
       }
 
-      input[type="text"] {
+      input[type="text"],
+      input[type="password"],
+      input[type="email"] {
         width: 100%;
         background: var(--surface);
         border: 1px solid var(--border);
@@ -670,10 +672,14 @@
         transition: border-color 0.15s;
       }
 
-      input[type="text"]:focus {
+      input[type="text"]:focus,
+      input[type="password"]:focus,
+      input[type="email"]:focus {
         border-color: var(--accent);
       }
-      input[type="text"]::placeholder {
+      input[type="text"]::placeholder,
+      input[type="password"]::placeholder,
+      input[type="email"]::placeholder {
         color: var(--muted);
       }
 
@@ -1021,6 +1027,40 @@
         background: var(--border);
         border-radius: 2px;
       }
+
+      .password-checklist {
+        margin-top: 8px;
+        display: none;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .password-checklist.show {
+        display: flex;
+      }
+
+      .check-item {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: color 0.15s;
+      }
+
+      .check-item .mark {
+        width: 12px;
+        display: inline-block;
+      }
+
+      .check-item.met {
+        color: var(--accent);
+      }
+
+      .check-item.unmet {
+        color: var(--error);
+      }
     </style>
   </head>
   <body>
@@ -1255,7 +1295,13 @@
               type="password"
               id="register-password"
               placeholder="min. 8 characters"
+              oninput="checkPasswordStrength()"
             />
+            <div
+              class="ai-status"
+              id="password-hint"
+              style="margin-top: 6px"
+            ></div>
           </div>
           <button class="btn-primary" onclick="handleRegister()">
             Create account
@@ -1267,6 +1313,40 @@
     <script>
       let currentUser = null; // null = guest
 
+      const PASSWORD_RULES = [
+        { key: "length", label: "8+ characters", test: (p) => p.length >= 8 },
+        { key: "digit", label: "a number", test: (p) => /[0-9]/.test(p) },
+        { key: "lower", label: "a lowercase letter", test: (p) => /[a-z]/.test(p) },
+        { key: "upper", label: "an uppercase letter", test: (p) => /[A-Z]/.test(p) },
+        {
+          key: "special",
+          label: "a special character (!@#$%&*)",
+          test: (p) => [...p].some((c) => "!@#$%&*".includes(c)),
+        },
+        { key: "space", label: "no spaces", test: (p) => !/\s/.test(p) },
+      ];
+
+      function checkPasswordStrength() {
+        const password = document.getElementById("register-password").value;
+        const wrap = document.getElementById("password-checklist");
+
+        if (!password) {
+          wrap.classList.remove("show");
+          wrap.innerHTML = "";
+          return;
+        }
+
+        wrap.classList.add("show");
+        wrap.innerHTML = PASSWORD_RULES.map((rule) => {
+          const met = rule.test(password);
+          return `
+            <div class="check-item ${met ? "met" : "unmet"}">
+              <span class="mark">${met ? "✓" : "✕"}</span>
+              <span>${rule.label}</span>
+            </div>
+          `;
+        }).join("");
+      }
       function openAuthModal() {
         document.getElementById("auth-modal-overlay").classList.add("show");
         hideModalError();
